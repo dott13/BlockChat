@@ -1,0 +1,17 @@
+[package]
+name = "chat_backend"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+actix-web = "4.9.0"
+dev = "0.1.0"
+dotenvy = "0.15.7"
+sea-orm = { version = "1.1.2", features = ["sqlx-postgres"] }
+serde = "1.0.216"
+serde_json = "1.0.133"
+tokio = { version = "1.42.0", features = ["full"] }
+uuid = "1.11.0"
+
+[dev-dependencies]
+anyhow = "1.0.94"

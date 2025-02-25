@@ -3,7 +3,7 @@ use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, Set};
 use serde::{Deserialize, Serialize};
 use crate::entities::{users, prelude::Users};
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
-use rand_core::OsRng;
+use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::SaltString;
 use jsonwebtoken::{encode, Header, EncodingKey};
 use chrono::{Utc, Duration};
@@ -61,7 +61,8 @@ pub async fn register(
 
     // Hash the password with a secure salt
     let password = form.password.as_bytes();
-    let salt = SaltString::generate(&mut OsRng); // Generate a secure random salt
+    let mut rng = OsRng;
+    let salt = SaltString::generate(&mut rng);
     let hashed_password = Argon2::default()
         .hash_password(password, &salt)
         .expect("Failed to hash password")

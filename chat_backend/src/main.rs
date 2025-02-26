@@ -1,6 +1,9 @@
 use dotenvy::dotenv;
 use sea_orm::Database;
 use actix_web::{web, App, HttpServer};
+use actix_web::middleware::Logger;
+use actix_cors::Cors;
+use middleware::custom_logger::CustomLogger;
 use log::{info, error};
 use env_logger::Env;
 
@@ -8,6 +11,7 @@ mod entities;
 mod routes;
 mod handlers;
 mod seed;
+mod middleware;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -44,7 +48,18 @@ async fn main() -> std::io::Result<()> {
     info!("Starting the HTTP server on 127.0.0.1:8080");
 
     HttpServer::new(move || {
+        let cors = Cors::default()
+                        .allowed_origin("http://localhost:3000")
+                        .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS"])
+                        .allowed_headers(vec![
+                            actix_web::http::header::AUTHORIZATION,
+                            actix_web::http::header::ACCEPT,
+                            actix_web::http::header::CONTENT_TYPE,
+                            ])
+                        .max_age(3600);
         App::new()
+            .wrap(CustomLogger)
+            .wrap(cors)
             .app_data(web::Data::new(db.clone()))
             .configure(routes::user_routes::configure)
     })

@@ -1,7 +1,6 @@
 use dotenvy::dotenv;
 use sea_orm::Database;
 use actix_web::{web, App, HttpServer};
-use actix_web::middleware::Logger;
 use actix_cors::Cors;
 use middleware::custom_logger::CustomLogger;
 use log::{info, error};

@@ -1,5 +1,4 @@
 use actix_web::{web, HttpResponse};
-use log::info;
 use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, Set};
 use serde::{Deserialize, Serialize};
 use crate::entities::{users, prelude::Users};

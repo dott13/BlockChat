@@ -1,30 +1,17 @@
 <template>
-  <div class="flex items-center justify-center min-h-screen bg-gray-100">
+  <div class="flex items-center justify-center">
     <div class="w-full max-w-md p-8 space-y-6 bg-white rounded shadow">
       <h1 class="text-2xl font-bold text-center text-gray-700">Login</h1>
       <form @submit.prevent="handleLogin" class="space-y-4">
         <div>
-          <label for="username" class="block text-sm font-medium text-gray-700"
-            >Username</label
-          >
-          <input
-            id="username"
-            type="text"
-            v-model="credentials.username"
-            placeholder="Enter your username"
-            class="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
+          <UiInput label="Username" v-model="credentials.username" placeholder="Enter your username" />
         </div>
         <div>
-          <label for="password" class="block text-sm font-medium text-gray-700"
-            >Password</label
-          >
-          <input
-            id="password"
+          <UiInput 
+            label="Password"
             type="password"
             v-model="credentials.password"
             placeholder="Enter your password"
-            class="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
         <button
@@ -46,6 +33,7 @@
 </template>
 
 <script setup>
+import { UiInput } from "#components";
 import { ref } from "vue";
 import { useAuth } from "~/composables/useAuth"; // Adjust the path if needed
 

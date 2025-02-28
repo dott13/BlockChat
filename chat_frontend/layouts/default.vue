@@ -1,5 +1,7 @@
 <template>
-    <div class="min-h-screen bg-[#EFFFFB]">
+
+    <div class="min-h-screen bg-background">
         <NuxtPage />
     </div>
+    
 </template>

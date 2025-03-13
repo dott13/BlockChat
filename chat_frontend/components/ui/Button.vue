@@ -1,6 +1,6 @@
 <template>
   <button
-    class="px-4 py-2 font-semibold rounded transition-colors duration-200 ease-in-out bg-red border border-accent text-white hover:brightness-90 active:bg-secondary loading ? 'cursor-not-allowed opacity-75"
+    :class="buttonClasses"
     :disabled="loading"
     v-bind="$attrs"
   >
@@ -31,11 +31,38 @@
   </button>
 </template>
 
-<script setup>
+<script setup lang="ts">
+import { computed } from 'vue'
+
 const props = defineProps({
   loading: {
     type: Boolean,
     default: false,
   },
-});
+  // Allow different button styles (variants)
+  variant: {
+    type: String,
+    default: 'primary',
+  },
+})
+
+// Base classes common to all buttons
+const baseClasses = 'px-4 py-2 font-semibold rounded transition-colors duration-200 ease-in-out border text-white'
+
+// Variant definitions – extend these as needed for your UI kit
+const variants: Record<string, string> = {
+  primary: 'bg-blue-500 border-blue-500 hover:bg-blue-600 active:bg-blue-700',
+  secondary: 'bg-green-500 border-green-500 hover:bg-green-600 active:bg-green-700',
+  danger: 'bg-red-500 border-red-500 hover:bg-red-600 active:bg-red-700',
+  // default fallback variant
+}
+
+// Disabled state classes
+const disabledClasses = 'cursor-not-allowed opacity-75'
+
+// Computed property that builds the final class string
+const buttonClasses = computed(() => {
+  const variantClasses = variants[props.variant] || variants.primary
+  return `${baseClasses} ${variantClasses} ${props.loading ? disabledClasses : ''}`
+})
 </script>

@@ -211,7 +211,7 @@ async function handleRegister() {
       
       // Navigate to home page after a delay
       setTimeout(() => {
-        router.push('/')
+        router.push('/login')
       }, 1500)
     }
   } catch (err) {

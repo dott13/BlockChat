@@ -81,10 +81,12 @@
 <script setup lang="ts">
 import { reactive, computed, watch } from 'vue'
 import { useAuthStore } from '~/stores/auth'
+import { useRouter } from 'vue-router'
 import { UserIcon, LockClosedIcon, ArrowPathIcon, ExclamationCircleIcon, CheckCircleIcon } from '@heroicons/vue/24/outline'
 
 // Access the auth store
 const authStore = useAuthStore()
+const router = useRouter()
 
 // Local reactive state for credentials and validation messages
 const form = reactive({
@@ -151,4 +153,13 @@ const handleLogin = async () => {
   
   await authStore.login(form.credentials)
 }
+
+watch(success, (newValue) => {
+  if (newValue) {
+    // Short delay to show the success message briefly
+    setTimeout(() => {
+      router.push('/')
+    }, 1000)
+  }
+})
 </script>

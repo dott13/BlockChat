@@ -29,4 +29,10 @@ pub enum Relation {
     User,
 }
 
+impl Related<crate::entities::chats::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Chat.def()
+    }
+}
+
 impl ActiveModelBehavior for ActiveModel {}

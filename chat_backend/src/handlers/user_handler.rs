@@ -1,42 +1,45 @@
 use actix_web::{web, HttpResponse};
-use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, Set};
-use serde::{Deserialize, Serialize};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
+use serde::Serialize;
+use crate::entities::prelude::ChatParticipants;
+use crate::entities::prelude::Chats;
 use crate::entities::{users, prelude::Users};
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::SaltString;
 use jsonwebtoken::{encode, Header, EncodingKey};
 use chrono::{Utc, Duration};
+use crate::models::user_models::*;
 
 // Load JWT secret key at runtime
 fn get_secret() -> String {
     std::env::var("JWT_SECRET").expect("JWT_SECRET must be set")
 }
 
-// JWT Claims
+async fn get_user_chat_names(db: &DatabaseConnection, user_id: i32) -> Vec<String> {
+    use crate::entities::chat_participants::Column as CpColumn;
+    // Find chat participants records for this user and join with Chats.
+    match ChatParticipants::find()
+        .filter(CpColumn::UserId.eq(user_id))
+        .find_also_related(Chats)
+        .all(db)
+        .await 
+    {
+        Ok(records) => {
+            // For each record, if the related chat exists, extract its name.
+            records
+                .into_iter()
+                .filter_map(|(_cp, maybe_chat)| maybe_chat.map(|chat| chat.name))
+                .collect()
+        }
+        Err(_) => Vec::new(),
+    }
+}
+
 #[derive(Serialize)]
 struct Claims {
     sub: String, // Username
     exp: usize,  // Expiration time
-}
-
-#[derive(Deserialize)]
-pub struct RegisterUser {
-    pub first_name: String,
-    pub last_name: String,
-    pub username: String,
-    pub password: String,
-}
-
-#[derive(Deserialize)]
-pub struct LoginUser {
-    pub username: String,
-    pub password: String,
-}
-
-#[derive(Serialize)]
-pub struct ResponseMessage {
-    pub message: String,
 }
 
 // Registration Handler
@@ -133,4 +136,25 @@ pub async fn login(
         "message": "Login successful",
         "token": token,
     }))
+}
+
+// Get All Users Handler
+pub async fn get_users(db: web::Data<DatabaseConnection>) -> HttpResponse {
+    match Users::find().all(db.get_ref()).await {
+        Ok(users) => {
+            let mut users_response = Vec::new();
+            for user in users {
+                let mut user_resp = UserResponse::from(user.clone());
+                //Query chat names for the users
+                let chat_names = get_user_chat_names(db.get_ref(), user.id).await;
+                user_resp.chats = chat_names;
+                users_response.push(user_resp);
+            }
+            HttpResponse::Ok().json(GetAllUsersResponse {
+            users: users_response,
+            })
+        }
+        Err(err) => HttpResponse::InternalServerError().json(format!("Error: {:?}", err)),
+    }
+    
 }

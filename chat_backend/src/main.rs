@@ -9,6 +9,7 @@ use env_logger::Env;
 mod entities;
 mod routes;
 mod handlers;
+mod models;
 mod seed;
 mod middleware;
 

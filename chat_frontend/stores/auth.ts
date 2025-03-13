@@ -23,12 +23,12 @@ export const useAuthStore = defineStore('auth', {
     status: "idle" as RequestStatus,
     isRegistered: false, // Track registration status explicitly
   }),
-  
+ 
   actions: {
     async register(payload: RegisterPayload) {
       this.status = 'loading'
       this.error = null
-      
+     
       try {
         const { data, error } = await useApi(`/users/register`, {
           method: 'POST',
@@ -47,11 +47,7 @@ export const useAuthStore = defineStore('auth', {
         // Registration successful, but we don't have a token yet
         this.status = 'success'
         this.isRegistered = true
-        
-        // Store username temporarily to allow middleware bypass
-        localStorage.setItem('justRegistered', 'true')
-        localStorage.setItem('registeredUser', payload.username)
-        
+       
         return data.value
       } catch (err: any) {
         this.status = 'error'
@@ -60,17 +56,17 @@ export const useAuthStore = defineStore('auth', {
         return null
       }
     },
-    
+   
     async login(payload: LoginPayload) {
       this.status = 'loading'
       this.error = null
-      
+     
       try {
         const { data, error } = await useApi<{ token: string }>(`/users/login`, {
           method: 'POST',
           body: payload,
         })
-        
+       
         if (error.value) {
           this.status = 'error'
           this.error = 'Invalid username or password'
@@ -87,11 +83,7 @@ export const useAuthStore = defineStore('auth', {
         this.user = payload.username
         localStorage.setItem('token', response.token)
         localStorage.setItem('user', payload.username)
-        
-        // Clear registration flags
-        localStorage.removeItem('justRegistered')
-        localStorage.removeItem('registeredUser')
-        
+       
         this.status = 'success'
         return response
       } catch (err: any) {
@@ -101,7 +93,7 @@ export const useAuthStore = defineStore('auth', {
         return null
       }
     },
-    
+   
     logout() {
       this.token = null
       this.user = null
@@ -109,28 +101,19 @@ export const useAuthStore = defineStore('auth', {
       this.isRegistered = false
       localStorage.removeItem('token')
       localStorage.removeItem('user')
-      localStorage.removeItem('justRegistered')
-      localStorage.removeItem('registeredUser')
     },
-    
+   
     checkAuth() {
       const token = localStorage.getItem('token')
       const user = localStorage.getItem('user')
-      const justRegistered = localStorage.getItem('justRegistered')
-      
+     
       if (token) {
         this.token = token
         this.user = user
         this.status = 'success'
         return true
       }
-      
-      if (justRegistered === 'true') {
-        this.isRegistered = true
-        this.user = localStorage.getItem('registeredUser')
-        return 'justRegistered'
-      }
-      
+     
       return false
     }
   }

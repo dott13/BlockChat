@@ -1,4 +1,5 @@
-<div class="relative">
+<template>
+  <div class="relative">
     <!-- Container with dynamic border color -->
     <div :class="[
           'border-2 rounded-lg p-2 transition-colors duration-200 ease-in-out focus-within:border-blue-300',

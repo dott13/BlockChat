@@ -35,6 +35,14 @@ pub struct GetAllUsersResponse {
 }
 
 #[derive(Deserialize)]
+pub struct UserFilter {
+    pub first_name: Option<String>,
+    pub last_name: Option<String>,
+    pub username: Option<String>,
+}
+
+
+#[derive(Deserialize)]
 pub struct RegisterUser {
     pub first_name: String,
     pub last_name: String,

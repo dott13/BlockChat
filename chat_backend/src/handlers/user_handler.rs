@@ -1,4 +1,6 @@
 use actix_web::{web, HttpResponse};
+use sea_orm::prelude::Expr;
+use sea_orm::sea_query::Func;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use serde::Serialize;
 use crate::entities::prelude::ChatParticipants;
@@ -139,8 +141,37 @@ pub async fn login(
 }
 
 // Get All Users Handler
-pub async fn get_users(db: web::Data<DatabaseConnection>) -> HttpResponse {
-    match Users::find().all(db.get_ref()).await {
+pub async fn get_users(
+    db: web::Data<DatabaseConnection>,
+    filter: web::Query<UserFilter>
+) -> HttpResponse {
+
+    let mut query = Users::find();
+    if let Some(first_name) = &filter.first_name {
+        // Case-insensitive match for first name
+        let pattern = format!("{}%", first_name);
+        query = query.filter(
+            Expr::expr(Func::lower(Expr::col(users::Column::FirstName)))
+                .like(pattern.to_lowercase())
+        );
+    }
+    if let Some(last_name) = &filter.last_name {
+        // Case-insensitive match for last name
+        let pattern = format!("{}%", last_name);
+        query = query.filter(
+            Expr::expr(Func::lower(Expr::col(users::Column::LastName)))
+                .like(pattern.to_lowercase())
+        );
+    }
+    if let Some(username) = &filter.username {
+        // Case-insensitive match for username
+        let pattern = format!("{}%", username);
+        query = query.filter(
+            Expr::expr(Func::lower(Expr::col(users::Column::Username)))
+                .like(pattern.to_lowercase())
+        );
+    }
+    match query.all(db.get_ref()).await {
         Ok(users) => {
             let mut users_response = Vec::new();
             for user in users {

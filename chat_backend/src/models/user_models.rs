@@ -2,6 +2,13 @@ use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
 use crate::entities::users;
 
+#[derive(Serialize)]
+pub struct ChatInfo {
+    pub chat_name: String,
+    pub author_id: i32,
+    pub author_username: String,
+}
+
 // Response struct for a user (without sensitive data).
 #[derive(Serialize)]
 pub struct UserResponse {
@@ -11,7 +18,7 @@ pub struct UserResponse {
     pub username: String,
     pub role_id: Option<i32>,
     pub created_at: Option<DateTime<Utc>>,
-    pub chats: Vec<String>,
+    pub chats: Vec<ChatInfo>,
 }
 
 impl From<users::Model> for UserResponse {

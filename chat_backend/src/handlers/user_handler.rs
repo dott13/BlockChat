@@ -18,24 +18,34 @@ fn get_secret() -> String {
     std::env::var("JWT_SECRET").expect("JWT_SECRET must be set")
 }
 
-async fn get_user_chat_names(db: &DatabaseConnection, user_id: i32) -> Vec<String> {
+async fn get_user_chat_info(db: &DatabaseConnection, user_id: i32) -> Vec<ChatInfo> {
     use crate::entities::chat_participants::Column as CpColumn;
-    // Find chat participants records for this user and join with Chats.
-    match ChatParticipants::find()
+    let mut infos = Vec::new();
+    // First, get all chat participation records for the user.
+    if let Ok(chat_parts) = ChatParticipants::find()
         .filter(CpColumn::UserId.eq(user_id))
-        .find_also_related(Chats)
         .all(db)
-        .await 
+        .await
     {
-        Ok(records) => {
-            // For each record, if the related chat exists, extract its name.
-            records
-                .into_iter()
-                .filter_map(|(_cp, maybe_chat)| maybe_chat.map(|chat| chat.name))
-                .collect()
+        // For each participation record, load the chat along with its author.
+        for cp in chat_parts {
+            // We use find_by_id on Chats and then find_also_related on Users (the chat's author).
+            if let Ok(Some((chat, maybe_author))) = Chats::find_by_id(cp.chat_id)
+                .find_also_related(users::Entity)
+                .one(db)
+                .await
+            {
+                if let Some(author) = maybe_author {
+                    infos.push(ChatInfo {
+                        chat_name: chat.name,
+                        author_id: chat.author_id,
+                        author_username: author.username,
+                    });
+                }
+            }
         }
-        Err(_) => Vec::new(),
     }
+    infos
 }
 
 #[derive(Serialize)]
@@ -177,8 +187,8 @@ pub async fn get_users(
             for user in users {
                 let mut user_resp = UserResponse::from(user.clone());
                 //Query chat names for the users
-                let chat_names = get_user_chat_names(db.get_ref(), user.id).await;
-                user_resp.chats = chat_names;
+                let chat_info = get_user_chat_info(db.get_ref(), user.id).await;
+                user_resp.chats = chat_info;
                 users_response.push(user_resp);
             }
             HttpResponse::Ok().json(GetAllUsersResponse {

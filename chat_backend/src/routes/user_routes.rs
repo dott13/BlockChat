@@ -9,5 +9,6 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                     .route("/all", web::get().to(user_handler::get_users))
                     .route("/{id}", web::get().to(user_handler::get_user))
                     .route("/{id}", web::put().to(user_handler::update_user))
+                    .route("/{id}", web::delete().to(user_handler::delete_user))
     );
 }

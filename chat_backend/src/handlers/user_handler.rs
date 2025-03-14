@@ -276,3 +276,25 @@ pub async fn update_user(
         Err(err) => HttpResponse::InternalServerError().json(format!("Error: {:?}", err)),
     }
 }
+
+//Delete User Handler
+pub async fn delete_user(
+    db: web::Data<DatabaseConnection>,
+    user_id: web::Path<i32>,
+) -> HttpResponse {
+    let user_id = user_id.into_inner();
+    match Users::delete_by_id(user_id).exec(db.get_ref()).await {
+        Ok(result) => {
+            if result.rows_affected > 0 {
+                HttpResponse::Ok().json(ResponseMessage {
+                    message: "User deleted succesfully".to_string(),
+                })
+            } else {
+                HttpResponse::NotFound().json(ResponseMessage {
+                    message: "User not found".to_string(),
+                })
+            }
+        }
+        Err(err) => HttpResponse::InternalServerError().json(format!("Error: {:?}", err)),
+    }
+}

@@ -46,6 +46,8 @@ pub struct UserFilter {
     pub first_name: Option<String>,
     pub last_name: Option<String>,
     pub username: Option<String>,
+    pub chat_name: Option<String>,
+    pub author_username: Option<String>,
 }
 
 

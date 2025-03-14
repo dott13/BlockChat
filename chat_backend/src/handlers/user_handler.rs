@@ -3,8 +3,7 @@ use sea_orm::prelude::Expr;
 use sea_orm::sea_query::Func;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use serde::Serialize;
-use crate::entities::prelude::ChatParticipants;
-use crate::entities::prelude::Chats;
+use crate::entities::prelude::{ChatParticipants, Chats};
 use crate::entities::{users, prelude::Users};
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use argon2::password_hash::rand_core::OsRng;
@@ -181,6 +180,7 @@ pub async fn get_users(
                 .like(pattern.to_lowercase())
         );
     }
+    
     match query.all(db.get_ref()).await {
         Ok(users) => {
             let mut users_response = Vec::new();
@@ -188,11 +188,30 @@ pub async fn get_users(
                 let mut user_resp = UserResponse::from(user.clone());
                 //Query chat names for the users
                 let chat_info = get_user_chat_info(db.get_ref(), user.id).await;
-                user_resp.chats = chat_info;
-                users_response.push(user_resp);
+                if filter.chat_name.is_some() && filter.author_username.is_some() {
+                    let chat_name_pattern = filter.chat_name.as_ref().unwrap().to_lowercase();
+                    let author_pattern = filter.author_username.as_ref().unwrap().to_lowercase();
+
+                     // Filter the chat_info to only include matching chats
+                     let filtered_chats: Vec<ChatInfo> = chat_info.into_iter()
+                     .filter(|info| {
+                         info.chat_name.to_lowercase().starts_with(&chat_name_pattern) && 
+                         info.author_username.to_lowercase().starts_with(&author_pattern)
+                     })
+                     .collect();
+                 
+                 // Only include this user if they have any chats that match both filters
+                 if !filtered_chats.is_empty() {
+                     user_resp.chats = filtered_chats;
+                     users_response.push(user_resp);
+                 }
+                } else {
+                    user_resp.chats = chat_info;
+                    users_response.push(user_resp); 
+                }
             }
             HttpResponse::Ok().json(GetAllUsersResponse {
-            users: users_response,
+                users: users_response,
             })
         }
         Err(err) => HttpResponse::InternalServerError().json(format!("Error: {:?}", err)),

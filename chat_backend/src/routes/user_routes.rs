@@ -7,5 +7,6 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                     .route("/register", web::post().to(user_handler::register))
                     .route("/login", web::post().to(user_handler::login))
                     .route("/all", web::get().to(user_handler::get_users))
+                    .route("/{id}", web::get().to(user_handler::get_user))
     );
 }

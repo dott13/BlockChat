@@ -218,3 +218,23 @@ pub async fn get_users(
     }
     
 }
+
+//Get a single user by id Handler
+pub async fn get_user(
+    db: web::Data<DatabaseConnection>,
+    user_id: web::Path<i32>,
+) -> HttpResponse {
+    let user_id = user_id.into_inner();
+    match Users::find_by_id(user_id).one(db.get_ref()).await {
+        Ok(Some(user)) => {
+            let mut user_resp = UserResponse::from(user);
+            let chat_info = get_user_chat_info(db.get_ref(), user_resp.id).await;
+            user_resp.chats = chat_info;
+            HttpResponse::Ok().json(user_resp)
+        }
+        Ok(None) => HttpResponse::NotFound().json(ResponseMessage {
+            message: "User not found".to_string()
+        }),
+        Err(err) => HttpResponse::InternalServerError().json(format!("Error: {:?}", err)),
+    }
+}

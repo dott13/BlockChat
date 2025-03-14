@@ -6,5 +6,9 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         web::scope("/users")
                     .route("/register", web::post().to(user_handler::register))
                     .route("/login", web::post().to(user_handler::login))
+                    .route("/all", web::get().to(user_handler::get_users))
+                    .route("/{id}", web::get().to(user_handler::get_user))
+                    .route("/{id}", web::put().to(user_handler::update_user))
+                    .route("/{id}", web::delete().to(user_handler::delete_user))
     );
 }

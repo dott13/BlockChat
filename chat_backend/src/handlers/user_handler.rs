@@ -1,43 +1,53 @@
 use actix_web::{web, HttpResponse};
-use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, Set};
-use serde::{Deserialize, Serialize};
+use sea_orm::prelude::Expr;
+use sea_orm::sea_query::Func;
+use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
+use crate::entities::prelude::{ChatParticipants, Chats};
 use crate::entities::{users, prelude::Users};
+use crate::models::token_model::Claims;
+use crate::{merge_update, merge_update_optional};
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::SaltString;
 use jsonwebtoken::{encode, Header, EncodingKey};
 use chrono::{Utc, Duration};
+use crate::models::user_models::*;
 
 // Load JWT secret key at runtime
 fn get_secret() -> String {
     std::env::var("JWT_SECRET").expect("JWT_SECRET must be set")
 }
 
-// JWT Claims
-#[derive(Serialize)]
-struct Claims {
-    sub: String, // Username
-    exp: usize,  // Expiration time
+async fn get_user_chat_info(db: &DatabaseConnection, user_id: i32) -> Vec<ChatInfo> {
+    use crate::entities::chat_participants::Column as CpColumn;
+    let mut infos = Vec::new();
+    // First, get all chat participation records for the user.
+    if let Ok(chat_parts) = ChatParticipants::find()
+        .filter(CpColumn::UserId.eq(user_id))
+        .all(db)
+        .await
+    {
+        // For each participation record, load the chat along with its author.
+        for cp in chat_parts {
+            // We use find_by_id on Chats and then find_also_related on Users (the chat's author).
+            if let Ok(Some((chat, maybe_author))) = Chats::find_by_id(cp.chat_id)
+                .find_also_related(users::Entity)
+                .one(db)
+                .await
+            {
+                if let Some(author) = maybe_author {
+                    infos.push(ChatInfo {
+                        chat_name: chat.name,
+                        author_id: chat.author_id,
+                        author_username: author.username,
+                    });
+                }
+            }
+        }
+    }
+    infos
 }
 
-#[derive(Deserialize)]
-pub struct RegisterUser {
-    pub first_name: String,
-    pub last_name: String,
-    pub username: String,
-    pub password: String,
-}
-
-#[derive(Deserialize)]
-pub struct LoginUser {
-    pub username: String,
-    pub password: String,
-}
-
-#[derive(Serialize)]
-pub struct ResponseMessage {
-    pub message: String,
-}
 
 // Registration Handler
 pub async fn register(
@@ -86,6 +96,13 @@ pub async fn register(
     }
 }
 
+fn role_name_from_id(role_id: Option<i32>) -> String {
+    match role_id {
+        Some(2) => "admin".to_string(),
+        Some(3) => "user".to_string(),
+        _ => "unknown".to_string(),
+    }
+}
 
 // Login Handler
 pub async fn login(
@@ -119,6 +136,7 @@ pub async fn login(
     // Generate a JWT token
     let claims = Claims {
         sub: user.username.clone(),
+        role: role_name_from_id(user.role_id),
         exp: (Utc::now() + Duration::seconds(3600)).timestamp() as usize, // 1 hour expiration
     };
 
@@ -133,4 +151,153 @@ pub async fn login(
         "message": "Login successful",
         "token": token,
     }))
+}
+
+// Get All Users Handler
+pub async fn get_users(
+    db: web::Data<DatabaseConnection>,
+    filter: web::Query<UserFilter>
+) -> HttpResponse {
+
+    let mut query = Users::find();
+    if let Some(first_name) = &filter.first_name {
+        // Case-insensitive match for first name
+        let pattern = format!("{}%", first_name);
+        query = query.filter(
+            Expr::expr(Func::lower(Expr::col(users::Column::FirstName)))
+                .like(pattern.to_lowercase())
+        );
+    }
+    if let Some(last_name) = &filter.last_name {
+        // Case-insensitive match for last name
+        let pattern = format!("{}%", last_name);
+        query = query.filter(
+            Expr::expr(Func::lower(Expr::col(users::Column::LastName)))
+                .like(pattern.to_lowercase())
+        );
+    }
+    if let Some(username) = &filter.username {
+        // Case-insensitive match for username
+        let pattern = format!("{}%", username);
+        query = query.filter(
+            Expr::expr(Func::lower(Expr::col(users::Column::Username)))
+                .like(pattern.to_lowercase())
+        );
+    }
+    
+    match query.all(db.get_ref()).await {
+        Ok(users) => {
+            let mut users_response = Vec::new();
+            for user in users {
+                let mut user_resp = UserResponse::from(user.clone());
+                //Query chat names for the users
+                let chat_info = get_user_chat_info(db.get_ref(), user.id).await;
+                if filter.chat_name.is_some() && filter.author_username.is_some() {
+                    let chat_name_pattern = filter.chat_name.as_ref().unwrap().to_lowercase();
+                    let author_pattern = filter.author_username.as_ref().unwrap().to_lowercase();
+
+                     // Filter the chat_info to only include matching chats
+                     let filtered_chats: Vec<ChatInfo> = chat_info.into_iter()
+                     .filter(|info| {
+                         info.chat_name.to_lowercase().starts_with(&chat_name_pattern) && 
+                         info.author_username.to_lowercase().starts_with(&author_pattern)
+                     })
+                     .collect();
+                 
+                 // Only include this user if they have any chats that match both filters
+                 if !filtered_chats.is_empty() {
+                     user_resp.chats = filtered_chats;
+                     users_response.push(user_resp);
+                 }
+                } else {
+                    user_resp.chats = chat_info;
+                    users_response.push(user_resp); 
+                }
+            }
+            HttpResponse::Ok().json(GetAllUsersResponse {
+                users: users_response,
+            })
+        }
+        Err(err) => HttpResponse::InternalServerError().json(format!("Error: {:?}", err)),
+    }
+    
+}
+
+//Get a single user by id Handler
+pub async fn get_user(
+    db: web::Data<DatabaseConnection>,
+    user_id: web::Path<i32>,
+) -> HttpResponse {
+    let user_id = user_id.into_inner();
+    match Users::find_by_id(user_id).one(db.get_ref()).await {
+        Ok(Some(user)) => {
+            let mut user_resp = UserResponse::from(user);
+            let chat_info = get_user_chat_info(db.get_ref(), user_resp.id).await;
+            user_resp.chats = chat_info;
+            HttpResponse::Ok().json(user_resp)
+        }
+        Ok(None) => HttpResponse::NotFound().json(ResponseMessage {
+            message: "User not found".to_string()
+        }),
+        Err(err) => HttpResponse::InternalServerError().json(format!("Error: {:?}", err)),
+    }
+}
+
+//Edit User Handler
+pub async fn update_user(
+    db: web::Data<DatabaseConnection>,
+    user_id: web::Path<i32>,
+    form: web::Json<UpdateUser>,
+) -> HttpResponse {
+    let user_id = user_id.into_inner();
+
+    // Find the user by id.
+    let user = match Users::find_by_id(user_id).one(db.get_ref()).await {
+        Ok(Some(user)) => user,
+        Ok(None) => return HttpResponse::NotFound().json(ResponseMessage {
+            message: "User not found".to_string(),
+        }),
+        Err(err) => return HttpResponse::InternalServerError().json(format!("Error: {:?}", err)),
+    };
+
+    // Convert the found user into an ActiveModel.
+    let mut user_model: users::ActiveModel = user.into();
+
+    // Convert the JSON into the update struct.
+    let update_data = form.into_inner();
+
+    // Use the macro to merge fields.
+    merge_update!(user_model, update_data, first_name, last_name, username);
+    merge_update_optional!(user_model, update_data, role_id);
+
+    // The password field is intentionally not updated.
+
+    match user_model.update(db.get_ref()).await {
+        Ok(_) => HttpResponse::Ok().json(ResponseMessage {
+            message: "User updated successfully".to_string(),
+        }),
+        Err(err) => HttpResponse::InternalServerError().json(format!("Error: {:?}", err)),
+    }
+}
+
+//Delete User Handler
+pub async fn delete_user(
+    db: web::Data<DatabaseConnection>,
+    user_id: web::Path<i32>,
+) -> HttpResponse {
+    let user_id = user_id.into_inner();
+    match Users::delete_by_id(user_id).exec(db.get_ref()).await {
+        Ok(result) => {
+            if result.rows_affected > 0 {
+                HttpResponse::Ok().json(ResponseMessage {
+                    message: "User deleted succesfully".to_string(),
+                })
+            } else {
+                HttpResponse::NotFound().json(ResponseMessage {
+                    message: "User not found".to_string(),
+                })
+            }
+        }
+        Err(err) => HttpResponse::InternalServerError().json(format!("Error: {:?}", err)),
+    }
 }

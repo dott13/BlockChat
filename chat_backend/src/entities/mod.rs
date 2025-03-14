@@ -2,7 +2,8 @@
 
 pub mod prelude;
 
-pub mod blocks;
+pub mod chats;
+pub mod chat_participants;
 pub mod messages;
 pub mod roles;
 pub mod users;

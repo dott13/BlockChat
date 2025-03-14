@@ -15,20 +15,11 @@ pub struct Model {
     #[sea_orm(column_type = "VarBinary(StringLen::None)", nullable)]
     pub avatar: Option<Vec<u8>>,
     pub role_id: Option<i32>,
-    pub block_id: Option<i32>,
     pub created_at: Option<DateTimeWithTimeZone>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
-    #[sea_orm(
-        belongs_to = "super::blocks::Entity",
-        from = "Column::BlockId",
-        to = "super::blocks::Column::Id",
-        on_update = "NoAction",
-        on_delete = "SetNull"
-    )]
-    Blocks,
     #[sea_orm(has_many = "super::messages::Entity")]
     Messages,
     #[sea_orm(
@@ -39,12 +30,6 @@ pub enum Relation {
         on_delete = "SetNull"
     )]
     Roles,
-}
-
-impl Related<super::blocks::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::Blocks.def()
-    }
 }
 
 impl Related<super::messages::Entity> for Entity {

@@ -50,6 +50,13 @@ pub struct UserFilter {
     pub author_username: Option<String>,
 }
 
+#[derive(Deserialize)]
+pub struct UpdateUser {
+    pub first_name: Option<String>,
+    pub last_name: Option<String>,
+    pub username: Option<String>,
+    pub role_id: Option<i32>,
+}
 
 #[derive(Deserialize)]
 pub struct RegisterUser {

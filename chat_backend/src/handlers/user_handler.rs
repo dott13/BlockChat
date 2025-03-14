@@ -1,10 +1,11 @@
 use actix_web::{web, HttpResponse};
 use sea_orm::prelude::Expr;
 use sea_orm::sea_query::Func;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
+use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use serde::Serialize;
 use crate::entities::prelude::{ChatParticipants, Chats};
 use crate::entities::{users, prelude::Users};
+use crate::{merge_update, merge_update_optional};
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::SaltString;
@@ -234,6 +235,43 @@ pub async fn get_user(
         }
         Ok(None) => HttpResponse::NotFound().json(ResponseMessage {
             message: "User not found".to_string()
+        }),
+        Err(err) => HttpResponse::InternalServerError().json(format!("Error: {:?}", err)),
+    }
+}
+
+//Edit User Handler
+pub async fn update_user(
+    db: web::Data<DatabaseConnection>,
+    user_id: web::Path<i32>,
+    form: web::Json<UpdateUser>,
+) -> HttpResponse {
+    let user_id = user_id.into_inner();
+
+    // Find the user by id.
+    let user = match Users::find_by_id(user_id).one(db.get_ref()).await {
+        Ok(Some(user)) => user,
+        Ok(None) => return HttpResponse::NotFound().json(ResponseMessage {
+            message: "User not found".to_string(),
+        }),
+        Err(err) => return HttpResponse::InternalServerError().json(format!("Error: {:?}", err)),
+    };
+
+    // Convert the found user into an ActiveModel.
+    let mut user_model: users::ActiveModel = user.into();
+
+    // Convert the JSON into the update struct.
+    let update_data = form.into_inner();
+
+    // Use the macro to merge fields.
+    merge_update!(user_model, update_data, first_name, last_name, username);
+    merge_update_optional!(user_model, update_data, role_id);
+
+    // The password field is intentionally not updated.
+
+    match user_model.update(db.get_ref()).await {
+        Ok(_) => HttpResponse::Ok().json(ResponseMessage {
+            message: "User updated successfully".to_string(),
         }),
         Err(err) => HttpResponse::InternalServerError().json(format!("Error: {:?}", err)),
     }

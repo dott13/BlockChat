@@ -2,9 +2,9 @@ use actix_web::{web, HttpResponse};
 use sea_orm::prelude::Expr;
 use sea_orm::sea_query::Func;
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
-use serde::Serialize;
 use crate::entities::prelude::{ChatParticipants, Chats};
 use crate::entities::{users, prelude::Users};
+use crate::models::token_model::Claims;
 use crate::{merge_update, merge_update_optional};
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use argon2::password_hash::rand_core::OsRng;
@@ -48,11 +48,6 @@ async fn get_user_chat_info(db: &DatabaseConnection, user_id: i32) -> Vec<ChatIn
     infos
 }
 
-#[derive(Serialize)]
-struct Claims {
-    sub: String, // Username
-    exp: usize,  // Expiration time
-}
 
 // Registration Handler
 pub async fn register(
@@ -101,6 +96,13 @@ pub async fn register(
     }
 }
 
+fn role_name_from_id(role_id: Option<i32>) -> String {
+    match role_id {
+        Some(2) => "admin".to_string(),
+        Some(3) => "user".to_string(),
+        _ => "unknown".to_string(),
+    }
+}
 
 // Login Handler
 pub async fn login(
@@ -134,6 +136,7 @@ pub async fn login(
     // Generate a JWT token
     let claims = Claims {
         sub: user.username.clone(),
+        role: role_name_from_id(user.role_id),
         exp: (Utc::now() + Duration::seconds(3600)).timestamp() as usize, // 1 hour expiration
     };
 

@@ -54,12 +54,23 @@ pub struct UserFilter {
 }
 
 #[derive(Deserialize)]
+pub struct CreateUser {
+    pub first_name: String,
+    pub last_name: String,
+    pub username: String,
+    pub password: String,
+    pub role_id: Option<i32>,
+    pub avatar: Option<String>,
+}
+
+#[derive(Deserialize)]
 pub struct UpdateUser {
     pub first_name: Option<String>,
     pub last_name: Option<String>,
     pub username: Option<String>,
     pub role_id: Option<i32>,
     pub avatar: Option<String>,
+    pub password: Option<String>,
 }
 
 #[derive(Deserialize)]

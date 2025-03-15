@@ -1,5 +1,4 @@
 use std::str;
-
 use actix_multipart::Multipart;
 use actix_web::{web, HttpRequest, HttpResponse};
 use base64::engine::general_purpose;
@@ -11,6 +10,7 @@ use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, Qu
 use crate::entities::prelude::{ChatParticipants, Chats};
 use crate::entities::{users, prelude::Users};
 use crate::models::token_model::Claims;
+use crate::utils::check_auth_user::AuthenticatedUser;
 use crate::{merge_update, merge_update_optional};
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use argon2::password_hash::rand_core::OsRng;
@@ -158,6 +158,165 @@ pub async fn login(
     }))
 }
 
+//Create User Handler
+pub async fn create_user(
+    db: web::Data<DatabaseConnection>,
+    req: HttpRequest,
+    mut payload: web::Payload,
+) -> HttpResponse {
+    let content_type = req
+        .headers()
+        .get("Content-Type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    let mut user_data = CreateUser {
+        first_name: String::new(),
+        last_name: String::new(),
+        username: String::new(),
+        password: String::new(),
+        role_id: None, // Optional – default to 3 (user) if not provided
+        avatar: None,
+    };
+
+    let mut avatar_bytes: Option<Vec<u8>> = None;
+
+    if content_type.starts_with("multipart/form-data") {
+        let mut multipart = Multipart::new(req.headers(), payload);
+        while let Ok(Some(mut field)) = multipart.try_next().await {
+            let field_name = field
+                .content_disposition()
+                .and_then(|cd| cd.get_name())
+                .unwrap_or("")
+                .to_string();
+            if field_name == "avatar" {
+                let mut data = Vec::new();
+                while let Some(chunk) = field.next().await {
+                    match chunk {
+                        Ok(bytes) => data.extend_from_slice(&bytes),
+                        Err(err) => return HttpResponse::BadRequest().json(ResponseMessage {
+                            message: format!("Error reading avatar image field: {:?}", err),
+                        }),
+                    }
+                }
+                avatar_bytes = Some(data);
+            } else {
+                let mut value = String::new();
+                while let Some(chunk) = field.next().await {
+                    match chunk {
+                        Ok(bytes) => value.push_str(str::from_utf8(&bytes).unwrap_or("")),
+                        Err(err) => return HttpResponse::BadRequest().json(ResponseMessage {
+                            message: format!("Error reading field {}: {:?}", field_name, err),
+                        }),
+                    }
+                }
+                match field_name.as_str() {
+                    "first_name" => user_data.first_name = value,
+                    "last_name" => user_data.last_name = value,
+                    "username" => user_data.username = value,
+                    "password" => user_data.password = value,
+                    "role_id" => {
+                        if let Ok(parsed) = value.parse::<i32>() {
+                            user_data.role_id = Some(parsed);
+                        }
+                    },
+                    _=> {}
+                }
+            }
+        }
+    } else if content_type.starts_with("application/json") {
+        const MAX_SIZE: usize = 262_144;
+        let mut body = web::BytesMut::new();
+
+        while let Some(chunk) = payload.next().await {
+            match chunk {
+                Ok(chunk) => {
+                    // Limit max size of in-memory buffer
+                    if (body.len() + chunk.len()) > MAX_SIZE {
+                        return HttpResponse::BadRequest().json(ResponseMessage {
+                            message: "Payload too large".to_string(),
+                        });
+                    }
+                    body.extend_from_slice(&chunk);
+                }
+                Err(e) => {
+                    return HttpResponse::BadRequest().json(ResponseMessage {
+                        message: format!("Error reading payload: {:?}", e),
+                    });
+                }
+            }
+        }
+
+        match serde_json::from_slice::<CreateUser>(&body) {
+            Ok(data) => user_data = data,
+            Err(e) => return HttpResponse::BadRequest().json(ResponseMessage {
+                message: format!("JSON parsing error: {:?}", e),
+            }),
+        }
+        if let Some(avatar_base64) = user_data.avatar.clone() {
+            match general_purpose::STANDARD.decode(avatar_base64) {
+                Ok(bytes) => avatar_bytes = Some(bytes),
+                Err(e) => return HttpResponse::BadRequest().json(ResponseMessage {
+                    message: format!("Invalid avatar data: {:?}", e),
+                }),
+            }
+        } 
+    } else {
+        return HttpResponse::BadRequest().body("Unsupported Content-Type");
+    }
+
+     // Ensure required fields are present.
+     if user_data.first_name.is_empty() ||
+     user_data.last_name.is_empty() ||
+     user_data.username.is_empty() ||
+     user_data.password.is_empty() 
+  {
+      return HttpResponse::BadRequest().json(ResponseMessage {
+          message: "Missing required fields".to_string(),
+      });
+  }
+
+  // Check if username already exists.
+  if Users::find()
+      .filter(users::Column::Username.eq(&user_data.username))
+      .one(db.get_ref())
+      .await
+      .unwrap()
+      .is_some()
+  {
+      return HttpResponse::Conflict().json(ResponseMessage {
+          message: "Username already exists".to_string(),
+      });
+  }
+
+  // Hash the password.
+  let password_bytes = user_data.password.as_bytes();
+  let mut rng = OsRng;
+  let salt = SaltString::generate(&mut rng);
+  let hashed_password = Argon2::default()
+      .hash_password(password_bytes, &salt)
+      .expect("Failed to hash password")
+      .to_string();
+
+  // Create a new ActiveModel. If role_id is not provided, default to 3 ("user").
+  let new_user_model = users::ActiveModel {
+      first_name: Set(user_data.first_name),
+      last_name: Set(user_data.last_name),
+      username: Set(user_data.username),
+      password: Set(hashed_password),
+      role_id: Set(user_data.role_id.or(Some(3))),
+      avatar: Set(avatar_bytes), // Will be None if not provided.
+      ..Default::default()
+  };
+
+  match users::Entity::insert(new_user_model).exec(db.get_ref()).await {
+      Ok(_) => HttpResponse::Ok().json(ResponseMessage {
+          message: "User created successfully".to_string(),
+      }),
+      Err(err) => HttpResponse::InternalServerError().body(format!("Error: {:?}", err)),
+  }
+}
+
 // Get All Users Handler
 pub async fn get_users(
     db: web::Data<DatabaseConnection>,
@@ -250,6 +409,7 @@ pub async fn get_user(
 
 //Edit User Handler
 pub async fn update_user(
+    auth_user: AuthenticatedUser,
     req: HttpRequest,
     mut payload: web::Payload,
     db: web::Data<DatabaseConnection>,
@@ -269,9 +429,16 @@ pub async fn update_user(
         }),
         Err(err) => return HttpResponse::InternalServerError().json(format!("Error: {:?}", err)),
     };
+    log::debug!("Token role: {}, Token sub: {}", auth_user.0.role, auth_user.0.sub);
+    // Enforce that if the authenticated user is not an admin, they can update only their own record.
+    if auth_user.0.role != "admin" && auth_user.0.sub != user.username {
+        return HttpResponse::Unauthorized().json(ResponseMessage {
+            message: "You are not authorized to update this user".to_string(),
+        });
+    }
 
     // Convert the fetched user into an ActiveModel.
-    let mut user_model: users::ActiveModel = user.into();
+    let mut user_model: users::ActiveModel = user.clone().into();
 
     // Prepare a default UpdateUser structure for JSON branch.
     let mut update_data = UpdateUser {
@@ -280,6 +447,7 @@ pub async fn update_user(
         username: None,
         role_id: None,
         avatar: None, // in JSON, expected as base64 string
+        password: None,
     };
     // Variable to hold raw avatar bytes for multipart.
     let mut avatar_bytes: Option<Vec<u8>> = None;
@@ -334,7 +502,8 @@ pub async fn update_user(
                         if let Ok(parsed) = value.parse::<i32>() {
                             update_data.role_id = Some(parsed);
                         }
-                    }
+                    },
+                    "password" => update_data.password = Some(value),
                     _ => {}
                 }
             }
@@ -398,6 +567,24 @@ pub async fn update_user(
     // Handle avatar separately since it's processed differently
     if let Some(avatar) = avatar_bytes {
         user_model.avatar = Set(Some(avatar));
+    }
+
+    //Handle password to be edited only for the same user that makes the request
+    if let Some(new_password) = update_data.password {
+        if auth_user.0.sub == user.username {
+            let password_bytes = new_password.as_bytes();
+            let mut rng = OsRng;
+            let salt = SaltString::generate(&mut rng);
+            let hashed_password = match Argon2::default().hash_password(password_bytes, &salt) {
+                Ok(hash) => hash.to_string(),
+                Err(err) => {
+                    return HttpResponse::InternalServerError().json(ResponseMessage {
+                        message: format!("Password hashing error: {:?}", err),
+                    })
+                }
+            };
+            user_model.password = Set(hashed_password);
+        }
     }
     match user_model.update(db.get_ref()).await {
         Ok(_) => HttpResponse::Ok().json(ResponseMessage {

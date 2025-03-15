@@ -1,13 +1,14 @@
 use std::rc::Rc;
 use std::task::{Context, Poll};
+use actix_web::guard::{Guard, GuardContext};
 use actix_web::{
     body::{BoxBody, MessageBody},
     dev::{Service, ServiceRequest, ServiceResponse, Transform},
     Error, HttpResponse,
 };
 use futures::future::{ok, LocalBoxFuture, Ready};
-use jsonwebtoken::{decode, DecodingKey, Validation};
-use crate::models::token_model::Claims;
+
+use crate::utils::check_auth_user::AuthenticatedUser;
 
 pub struct RoleGuard { 
     allowed_roles: Vec<String>,
@@ -17,6 +18,22 @@ impl RoleGuard {
     pub fn new(allowed_roles: Vec<&'static str>) -> Self {
         Self {
             allowed_roles: allowed_roles.into_iter().map(String::from).collect(),
+        }
+    }
+}
+
+impl Guard for RoleGuard {
+    fn check(&self, ctx: &GuardContext<'_>) -> bool {
+        // Extract headers from the request
+        let headers = ctx.head().headers();
+        
+        // Try to authenticate the user from headers
+        match AuthenticatedUser::from_headers_ref(headers) {
+            Ok(auth_user) => {
+                // Check if user's role is in allowed roles
+                self.allowed_roles.contains(&auth_user.0.role)
+            },
+            Err(_) => false
         }
     }
 }
@@ -63,22 +80,18 @@ where
         let allowed_roles = self.allowed_roles.clone();
         let service = Rc::clone(&self.service);
         Box::pin(async move {
-            if let Some(auth_header) = req.headers().get("Authorization") {
-                if let Ok(auth_str) = auth_header.to_str() {
-                    if auth_str.starts_with("Bearer ") {
-                        let token = auth_str.trim_start_matches("Bearer ").trim();
-                        if let Ok(secret) = std::env::var("JWT_SECRET") {
-                            let decoded_key = DecodingKey::from_secret(secret.as_bytes());
-                            if let Ok(token_data) = decode::<Claims>(token, &decoded_key, &Validation::default()) {
-                                if allowed_roles.contains(&token_data.claims.role) {
-                                    return service.call(req)
-                                        .await
-                                        .map(|res| res.map_into_boxed_body());
-                                }
-                            }
-                        }
+            match AuthenticatedUser::from_headers(req.request()) {
+                Ok(auth_user) => {
+                    log::debug!("Token decoded. Role: {}, Sub: {}", auth_user.0.role, auth_user.0.sub);
+                    if allowed_roles.contains(&auth_user.0.role) {
+                        return service.call(req)
+                            .await
+                            .map(|res| res.map_into_boxed_body());
+                    } else {
+                        log::debug!("Role {} not allowed. Allowed roles: {:?}", auth_user.0.role, allowed_roles);
                     }
-                }
+                },
+                Err(_) => {}
             }
             let response = HttpResponse::Unauthorized().json("Unauthorized");
             Ok(req.into_response(response))

@@ -64,6 +64,7 @@ impl MigrationTrait for Migration {
                     )
                     .col(ColumnDef::new(Chats::AuthorId).integer().not_null())
                     .foreign_key(&mut fk_chats_author)
+                    .col(ColumnDef::new(Chats::Image).binary().null())
                     .col(
                         ColumnDef::new(Chats::CreatedAt)
                             .timestamp_with_time_zone()
@@ -162,7 +163,7 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(Messages::Table)
-                    .drop_foreign_key(Alias::new("fk-messages-chat_id"))
+                    .drop_foreign_key(Alias::new("messages_chat_id_fkey"))
                     .to_owned(),
             )
             .await?;
@@ -269,6 +270,7 @@ enum Chats {
     Id,
     Name,
     AuthorId,
+    Image,
     CreatedAt,
 }
 

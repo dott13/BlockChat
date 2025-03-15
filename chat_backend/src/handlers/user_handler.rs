@@ -1,4 +1,10 @@
-use actix_web::{web, HttpResponse};
+use std::str;
+
+use actix_multipart::Multipart;
+use actix_web::{web, HttpRequest, HttpResponse};
+use base64::engine::general_purpose;
+use base64::Engine;
+use futures::{StreamExt, TryStreamExt};
 use sea_orm::prelude::Expr;
 use sea_orm::sea_query::Func;
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
@@ -245,13 +251,18 @@ pub async fn get_user(
 
 //Edit User Handler
 pub async fn update_user(
+    req: HttpRequest,
+    mut payload: web::Payload,
     db: web::Data<DatabaseConnection>,
-    user_id: web::Path<i32>,
-    form: web::Json<UpdateUser>,
 ) -> HttpResponse {
-    let user_id = user_id.into_inner();
+    // Extract user id from path.
+    let user_id_str = req.match_info().get("id").unwrap_or("0");
+    let user_id: i32 = match user_id_str.parse() {
+        Ok(id) => id,
+        Err(_) => return HttpResponse::BadRequest().body("Invalid user id"),
+    };
 
-    // Find the user by id.
+    // Fetch the existing user.
     let user = match Users::find_by_id(user_id).one(db.get_ref()).await {
         Ok(Some(user)) => user,
         Ok(None) => return HttpResponse::NotFound().json(ResponseMessage {
@@ -260,17 +271,135 @@ pub async fn update_user(
         Err(err) => return HttpResponse::InternalServerError().json(format!("Error: {:?}", err)),
     };
 
-    // Convert the found user into an ActiveModel.
+    // Convert the fetched user into an ActiveModel.
     let mut user_model: users::ActiveModel = user.into();
 
-    // Convert the JSON into the update struct.
-    let update_data = form.into_inner();
+    // Prepare a default UpdateUser structure for JSON branch.
+    let mut update_data = UpdateUser {
+        first_name: None,
+        last_name: None,
+        username: None,
+        role_id: None,
+        avatar: None, // in JSON, expected as base64 string
+    };
+    // Variable to hold raw avatar bytes for multipart.
+    let mut avatar_bytes: Option<Vec<u8>> = None;
 
-    // Use the macro to merge fields.
-    merge_update!(user_model, update_data, first_name, last_name, username);
-    merge_update_optional!(user_model, update_data, role_id);
+    // Check Content-Type.
+    let content_type = req
+        .headers()
+        .get("Content-Type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
 
-    // The password field is intentionally not updated.
+    if content_type.starts_with("multipart/form-data") {
+        // Process as multipart using actix-multipart.
+        let mut multipart = Multipart::new(req.headers(), payload);
+        
+        while let Ok(Some(mut field)) = multipart.try_next().await {
+            // Extract field name.
+            let field_name = field
+                .content_disposition()
+                .and_then(|cd| cd.get_name())
+                .unwrap_or("")
+                .to_string();
+            
+            if field_name == "avatar" {
+                let mut data = Vec::new();
+                while let Some(chunk) = field.next().await {
+                    match chunk {
+                        Ok(bytes) => data.extend_from_slice(&bytes),
+                        Err(e) => return HttpResponse::BadRequest().json(ResponseMessage {
+                            message: format!("Error reading avatar file: {:?}", e),
+                        }),
+                    }
+                }
+                avatar_bytes = Some(data);
+            } else {
+                let mut value = String::new();
+                while let Some(chunk) = field.next().await {
+                    match chunk {
+                        Ok(bytes) => {
+                            value.push_str(str::from_utf8(&bytes).unwrap_or(""));
+                        }
+                        Err(e) => return HttpResponse::BadRequest().json(ResponseMessage {
+                            message: format!("Error reading field {}: {:?}", field_name, e),
+                        }),
+                    }
+                }
+                match field_name.as_str() {
+                    "first_name" => update_data.first_name = Some(value),
+                    "last_name" => update_data.last_name = Some(value),
+                    "username" => update_data.username = Some(value),
+                    "role_id" => {
+                        if let Ok(parsed) = value.parse::<i32>() {
+                            update_data.role_id = Some(parsed);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    } else if content_type.starts_with("application/json") {
+        // Process as JSON: consume the payload into bytes.
+        const MAX_SIZE: usize = 262_144; // 256k limit for payload
+        let mut body = web::BytesMut::new();
+        
+        while let Some(chunk) = payload.next().await {
+            match chunk {
+                Ok(chunk) => {
+                    // Limit max size of in-memory buffer
+                    if (body.len() + chunk.len()) > MAX_SIZE {
+                        return HttpResponse::BadRequest().json(ResponseMessage {
+                            message: "Payload too large".to_string(),
+                        });
+                    }
+                    body.extend_from_slice(&chunk);
+                }
+                Err(e) => {
+                    return HttpResponse::BadRequest().json(ResponseMessage {
+                        message: format!("Error reading payload: {:?}", e),
+                    });
+                }
+            }
+        }
+
+        match serde_json::from_slice::<UpdateUser>(&body) {
+            Ok(data) => update_data = data,
+            Err(e) => return HttpResponse::BadRequest().json(ResponseMessage {
+                message: format!("JSON parsing error: {:?}", e),
+            }),
+        }
+        
+        // Decode avatar if provided in JSON.
+        if let Some(avatar_base64) = update_data.avatar.clone() {
+            match general_purpose::STANDARD.decode(avatar_base64) {
+                Ok(bytes) => avatar_bytes = Some(bytes),
+                Err(e) => return HttpResponse::BadRequest().json(ResponseMessage {
+                    message: format!("Invalid avatar data: {:?}", e),
+                }),
+            }
+        }
+    } else {
+        return HttpResponse::BadRequest().body("Unsupported Content-Type");
+    }
+
+    // Use the macros to merge fields from update_data into user_model
+    merge_update!(user_model, update_data, 
+        first_name,
+        last_name,
+        username
+    );
+    
+    // Use the optional merge macro for nullable fields
+    merge_update_optional!(user_model, update_data,
+        role_id
+    );
+    
+    // Handle avatar separately since it's processed differently
+    if let Some(avatar) = avatar_bytes {
+        user_model.avatar = Set(Some(avatar));
+    }
 
     match user_model.update(db.get_ref()).await {
         Ok(_) => HttpResponse::Ok().json(ResponseMessage {

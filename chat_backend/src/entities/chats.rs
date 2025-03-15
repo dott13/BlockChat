@@ -8,6 +8,7 @@ pub struct Model {
     #[sea_orm(unique)]
     pub name: String,
     pub author_id: i32, 
+    pub image: Option<Vec<u8>>,
     pub created_at: DateTimeWithTimeZone,
 }
 

@@ -54,7 +54,6 @@ async fn get_user_chat_info(db: &DatabaseConnection, user_id: i32) -> Vec<ChatIn
     infos
 }
 
-
 // Registration Handler
 pub async fn register(
     db: web::Data<DatabaseConnection>,
@@ -400,7 +399,6 @@ pub async fn update_user(
     if let Some(avatar) = avatar_bytes {
         user_model.avatar = Set(Some(avatar));
     }
-
     match user_model.update(db.get_ref()).await {
         Ok(_) => HttpResponse::Ok().json(ResponseMessage {
             message: "User updated successfully".to_string(),

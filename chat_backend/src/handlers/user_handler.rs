@@ -10,6 +10,7 @@ use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, Qu
 use crate::entities::prelude::{ChatParticipants, Chats};
 use crate::entities::{users, prelude::Users};
 use crate::models::token_model::Claims;
+use crate::utils::check_auth_user::AuthenticatedUser;
 use crate::{merge_update, merge_update_optional};
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use argon2::password_hash::rand_core::OsRng;
@@ -408,6 +409,7 @@ pub async fn get_user(
 
 //Edit User Handler
 pub async fn update_user(
+    auth_user: AuthenticatedUser,
     req: HttpRequest,
     mut payload: web::Payload,
     db: web::Data<DatabaseConnection>,
@@ -427,6 +429,13 @@ pub async fn update_user(
         }),
         Err(err) => return HttpResponse::InternalServerError().json(format!("Error: {:?}", err)),
     };
+    log::debug!("Token role: {}, Token sub: {}", auth_user.0.role, auth_user.0.sub);
+    // Enforce that if the authenticated user is not an admin, they can update only their own record.
+    if auth_user.0.role != "admin" && auth_user.0.sub != user.username {
+        return HttpResponse::Unauthorized().json(ResponseMessage {
+            message: "You are not authorized to update this user".to_string(),
+        });
+    }
 
     // Convert the fetched user into an ActiveModel.
     let mut user_model: users::ActiveModel = user.into();

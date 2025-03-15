@@ -8,20 +8,21 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             // Public endpoints (no middleware applied)
             .route("/register", web::post().to(user_handler::register))
             .route("/login", web::post().to(user_handler::login))
-            // Admin-only endpoints: get all users, update and delete a user.
-            .service(
-                web::scope("")
-                    .wrap(RoleGuard::new(vec!["admin"]))
-                    .route("/all", web::get().to(user_handler::get_users))
-                    .route("/{id}", web::put().to(user_handler::update_user))
-                    .route("/create", web::post().to(user_handler::create_user))
-                    .route("/{id}", web::delete().to(user_handler::delete_user))
-            )
             // Protected endpoint: get a single user, accessible by both admin and user.
             .service(
                 web::scope("")
                     .wrap(RoleGuard::new(vec!["admin", "user"]))
                     .route("/{id}", web::get().to(user_handler::get_user))
+                    .route("/{id}", web::put().to(user_handler::update_user))
             )
+            // Admin-only endpoints: get all users, update and delete a user.
+            .service(
+                web::scope("")
+                    .wrap(RoleGuard::new(vec!["admin"]))
+                    .route("/all", web::get().to(user_handler::get_users))
+                    .route("/create", web::post().to(user_handler::create_user))
+                    .route("/{id}", web::delete().to(user_handler::delete_user))
+            )
+            
     );
 }

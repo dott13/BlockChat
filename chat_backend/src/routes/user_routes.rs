@@ -14,6 +14,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                     .wrap(RoleGuard::new(vec!["admin"]))
                     .route("/all", web::get().to(user_handler::get_users))
                     .route("/{id}", web::put().to(user_handler::update_user))
+                    .route("/create", web::post().to(user_handler::create_user))
                     .route("/{id}", web::delete().to(user_handler::delete_user))
             )
             // Protected endpoint: get a single user, accessible by both admin and user.

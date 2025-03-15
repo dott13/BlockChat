@@ -70,6 +70,7 @@ pub struct UpdateUser {
     pub username: Option<String>,
     pub role_id: Option<i32>,
     pub avatar: Option<String>,
+    pub password: Option<String>,
 }
 
 #[derive(Deserialize)]

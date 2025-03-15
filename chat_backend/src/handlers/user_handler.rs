@@ -438,7 +438,7 @@ pub async fn update_user(
     }
 
     // Convert the fetched user into an ActiveModel.
-    let mut user_model: users::ActiveModel = user.into();
+    let mut user_model: users::ActiveModel = user.clone().into();
 
     // Prepare a default UpdateUser structure for JSON branch.
     let mut update_data = UpdateUser {
@@ -447,6 +447,7 @@ pub async fn update_user(
         username: None,
         role_id: None,
         avatar: None, // in JSON, expected as base64 string
+        password: None,
     };
     // Variable to hold raw avatar bytes for multipart.
     let mut avatar_bytes: Option<Vec<u8>> = None;
@@ -501,7 +502,8 @@ pub async fn update_user(
                         if let Ok(parsed) = value.parse::<i32>() {
                             update_data.role_id = Some(parsed);
                         }
-                    }
+                    },
+                    "password" => update_data.password = Some(value),
                     _ => {}
                 }
             }
@@ -565,6 +567,24 @@ pub async fn update_user(
     // Handle avatar separately since it's processed differently
     if let Some(avatar) = avatar_bytes {
         user_model.avatar = Set(Some(avatar));
+    }
+
+    //Handle password to be edited only for the same user that makes the request
+    if let Some(new_password) = update_data.password {
+        if auth_user.0.sub == user.username {
+            let password_bytes = new_password.as_bytes();
+            let mut rng = OsRng;
+            let salt = SaltString::generate(&mut rng);
+            let hashed_password = match Argon2::default().hash_password(password_bytes, &salt) {
+                Ok(hash) => hash.to_string(),
+                Err(err) => {
+                    return HttpResponse::InternalServerError().json(ResponseMessage {
+                        message: format!("Password hashing error: {:?}", err),
+                    })
+                }
+            };
+            user_model.password = Set(hashed_password);
+        }
     }
     match user_model.update(db.get_ref()).await {
         Ok(_) => HttpResponse::Ok().json(ResponseMessage {

@@ -1,4 +1,4 @@
-use actix_web::{Error, FromRequest, HttpRequest};
+use actix_web::{http::header::HeaderMap, Error, FromRequest, HttpRequest};
 use futures::future::{ready, Ready};
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use crate::models::token_model::Claims;
@@ -8,7 +8,12 @@ pub struct AuthenticatedUser(pub Claims);
 impl AuthenticatedUser {
     /// Extracts the token claims from the request headers.
     pub fn from_headers(req: &HttpRequest) -> Result<Self, Error> {
-        if let Some(auth_header) = req.headers().get("Authorization") {
+        Self::from_headers_ref(req.headers())
+    }
+    
+    /// Extracts the token claims from a header reference.
+    pub fn from_headers_ref(headers: &HeaderMap) -> Result<Self, Error> {
+        if let Some(auth_header) = headers.get("Authorization") {
             if let Ok(auth_str) = auth_header.to_str() {
                 if auth_str.starts_with("Bearer ") {
                     let token = auth_str.trim_start_matches("Bearer ").trim();

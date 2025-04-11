@@ -1,5 +1,5 @@
 <template>
-    <div class="flex min-h-screen">
+    <div class="flex min-h-screen bg-background">
         <UiSidebar
             title="Admin Panel"
             :items="navItems"

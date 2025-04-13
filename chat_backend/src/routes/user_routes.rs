@@ -12,7 +12,6 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             // Admin-only endpoints with their own resources
             .service(
                 web::resource("/all")
-                    .wrap(RoleGuard::new(vec!["admin"]))
                     .route(web::get().to(user_handler::get_users))
             )
             .service(

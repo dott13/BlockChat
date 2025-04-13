@@ -16,13 +16,16 @@ export const useUsersStore = defineStore('users', {
     }),
 
     actions: {
-        async getUsers() {
+        async getUsers(filters: Record<string, string> = {}) {
             this.status = 'loading'
             try {
 
                 const token = localStorage.getItem('token')
 
-                const {data, error} = await useApi<User[]>('/users/all', {
+                const queryParams = new URLSearchParams(filters).toString()
+                const endpoint = queryParams ? `/users/all?${queryParams}` : `/users/all`
+
+                const {data, error} = await useApi<User[]>(endpoint, {
                     method: 'GET',
                     headers: {
                         Authorization: `Bearer ${token}`

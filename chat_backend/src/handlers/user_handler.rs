@@ -324,7 +324,7 @@ pub async fn get_users(
 ) -> HttpResponse {
 
     let mut query = Users::find();
-    if let Some(first_name) = &filter.first_name {
+    if let Some(first_name) = &filter.first_name.as_ref().filter(|s| !s.trim().is_empty()) {
         // Case-insensitive match for first name
         let pattern = format!("{}%", first_name);
         query = query.filter(
@@ -332,7 +332,7 @@ pub async fn get_users(
                 .like(pattern.to_lowercase())
         );
     }
-    if let Some(last_name) = &filter.last_name {
+    if let Some(last_name) = &filter.last_name.as_ref().filter(|s| !s.trim().is_empty()) {
         // Case-insensitive match for last name
         let pattern = format!("{}%", last_name);
         query = query.filter(
@@ -340,7 +340,7 @@ pub async fn get_users(
                 .like(pattern.to_lowercase())
         );
     }
-    if let Some(username) = &filter.username {
+    if let Some(username) = &filter.username.as_ref().filter(|s| !s.trim().is_empty()) {
         // Case-insensitive match for username
         let pattern = format!("{}%", username);
         query = query.filter(
@@ -356,23 +356,24 @@ pub async fn get_users(
                 let mut user_resp = UserResponse::from(user.clone());
                 //Query chat names for the users
                 let chat_info = get_user_chat_info(db.get_ref(), user.id).await;
-                if filter.chat_name.is_some() && filter.author_username.is_some() {
-                    let chat_name_pattern = filter.chat_name.as_ref().unwrap().to_lowercase();
-                    let author_pattern = filter.author_username.as_ref().unwrap().to_lowercase();
+                if let (Some(chat_name), Some(author_name)) = (
+                    filter.chat_name.as_ref().filter(|s| !s.trim().is_empty()),
+                    filter.author_username.as_ref().filter(|s| !s.trim().is_empty())
+                ) {
+                    let chat_name_pattern = chat_name.to_lowercase();
+                    let author_username_pattern = author_name.to_lowercase();
 
-                     // Filter the chat_info to only include matching chats
-                     let filtered_chats: Vec<ChatInfo> = chat_info.into_iter()
-                     .filter(|info| {
-                         info.chat_name.to_lowercase().starts_with(&chat_name_pattern) && 
-                         info.author_username.to_lowercase().starts_with(&author_pattern)
-                     })
-                     .collect();
-                 
-                 // Only include this user if they have any chats that match both filters
-                 if !filtered_chats.is_empty() {
-                     user_resp.chats = filtered_chats;
-                     users_response.push(user_resp);
-                 }
+                    let filtered_chats: Vec<ChatInfo> = chat_info.into_iter()
+                        .filter(|info| {
+                            info.chat_name.to_lowercase().starts_with(&chat_name_pattern) &&
+                            info.author_username.to_lowercase().starts_with(&author_username_pattern)
+                        }) 
+                        .collect();
+
+                    if !filtered_chats.is_empty() {
+                        user_resp.chats = filtered_chats;
+                        users_response.push(user_resp);
+                    }
                 } else {
                     user_resp.chats = chat_info;
                     users_response.push(user_resp); 

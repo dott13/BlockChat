@@ -2,6 +2,7 @@
 import { defineStore } from "pinia"
 import type { RequestStatus } from "~/types/RequestStatus"
 import useApi from '~/composables/useApi'
+import { jwtDecode } from "jwt-decode"
 
 interface RegisterPayload {
   first_name: string
@@ -15,6 +16,10 @@ interface LoginPayload {
   password: string
 }
 
+interface JwtPayload {
+  role: string,
+}
+
 export const useAuthStore = defineStore('auth', {
   state: () => ({
     token: null as string | null,
@@ -22,6 +27,7 @@ export const useAuthStore = defineStore('auth', {
     user: null as string | null,
     status: "idle" as RequestStatus,
     isRegistered: false, // Track registration status explicitly
+    userRole: null as string | null,
   }),
  
   actions: {
@@ -81,6 +87,9 @@ export const useAuthStore = defineStore('auth', {
         const response = data.value
         this.token = response.token
         this.user = payload.username
+
+        const decode = jwtDecode<JwtPayload>(response.token)
+        this.userRole = decode.role
         localStorage.setItem('token', response.token)
         localStorage.setItem('user', payload.username)
        
@@ -99,6 +108,7 @@ export const useAuthStore = defineStore('auth', {
       this.user = null
       this.status = 'idle'
       this.isRegistered = false
+      this.userRole = null
       localStorage.removeItem('token')
       localStorage.removeItem('user')
     },
@@ -111,6 +121,8 @@ export const useAuthStore = defineStore('auth', {
         this.token = token
         this.user = user
         this.status = 'success'
+        const decoded = jwtDecode<JwtPayload>(token)
+        this.userRole = decoded.role
         return true
       }
      

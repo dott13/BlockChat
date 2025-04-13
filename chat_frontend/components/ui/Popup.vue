@@ -1,6 +1,6 @@
 <template>
     <div class="fixed inset-0 z-50 flex items-center justify-center bg-opacity-50">
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-lg w-full p-6">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-lg w-full p-6 text-white">
             <div class="flex justify-between items-center mb-4">
                 <slot name="header">
                     <h2 class="text-xl font-bold text-primary">Popup</h2>

@@ -124,6 +124,13 @@ import UserPopup from '~/components/User/UserPopup.vue';
   }
   function applyFilters() {
     usersStore.getUsers(filters.value)
+    filters.value = {
+      first_name: '',
+      last_name: '',
+      username: '',
+      chat_name: '',
+      author_username: '',
+    }
   } 
   onMounted(() => {
     usersStore.getUsers();

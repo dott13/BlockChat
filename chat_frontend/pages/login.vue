@@ -154,12 +154,14 @@ const handleLogin = async () => {
   await authStore.login(form.credentials)
 }
 
-watch(success, (newValue) => {
-  if (newValue) {
-    // Short delay to show the success message briefly
-    setTimeout(() => {
+watch(() => authStore.status, (newStatus) => {
+  if (newStatus === 'success' && authStore.token) {
+    // If admin, redirect to /admin. Otherwise, default to the main page.
+    if (authStore.userRole && authStore.userRole.toLowerCase() === 'admin') {
+      router.push('/admin')
+    } else {
       router.push('/')
-    }, 1000)
+    }
   }
 })
 </script>

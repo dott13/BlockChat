@@ -2,7 +2,7 @@
   "name": "chat_frontend",
   "private": true,
   "type": "module",
-  "version": "0.2.3",
+  "version": "0.2.8_a",
   "scripts": {
     "build": "nuxt build",
     "dev": "nuxt dev",

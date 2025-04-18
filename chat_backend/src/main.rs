@@ -63,6 +63,7 @@ async fn main() -> std::io::Result<()> {
             .wrap(cors)
             .app_data(web::Data::new(db.clone()))
             .configure(routes::user_routes::configure)
+            .configure(routes::chat_routes::configure)
     })
     .bind("127.0.0.1:8080")?
     .run()

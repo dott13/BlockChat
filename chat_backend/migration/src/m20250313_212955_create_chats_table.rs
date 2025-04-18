@@ -1,4 +1,6 @@
 use sea_orm_migration::prelude::*;
+use sea_query::Expr;
+use sea_orm_migration::prelude::extension::postgres::Extension;
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -6,6 +8,10 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .get_connection()
+            .execute_unprepared("CREATE EXTENSION IF NOT EXISTS pgcrypto")
+        .await?;
         // 1. Alter Users: Drop the deprecated BlockId column.
         manager
             .alter_table(
@@ -18,23 +24,38 @@ impl MigrationTrait for Migration {
             
         // 2a. Alter Messages: Drop the foreign key on BlockId.
         manager
-            .alter_table(
-                Table::alter()
-                    .table(Messages::Table)
-                    .drop_foreign_key(Alias::new("messages_block_id_fkey"))
-                    .to_owned(),
-            )
-            .await?;
-            
-        // 2b. Alter Messages: Rename the BlockId column to ChatId.
+        .alter_table(
+            Table::alter()
+                .table(Messages::Table)
+                .drop_foreign_key(Alias::new("messages_block_id_fkey"))
+                .to_owned(),
+        )
+        .await?;
+
+        // 2b. Since there's no data, drop the old column and add a new UUID column
         manager
-            .alter_table(
-                Table::alter()
-                    .table(Messages::Table)
-                    .rename_column(Messages::BlockId, Messages::ChatId)
-                    .to_owned(),
-            )
-            .await?;
+        .alter_table(
+            Table::alter()
+                .table(Messages::Table)
+                .drop_column(Messages::BlockId)
+                .to_owned(),
+        )
+        .await?;
+
+        // 2c. Add the new ChatId column as UUID
+        manager
+        .alter_table(
+            Table::alter()
+                .table(Messages::Table)
+                .add_column(
+                    ColumnDef::new(Messages::ChatId)
+                        .uuid()
+                        .not_null()
+                        .default(Expr::cust("gen_random_uuid()"))
+                )
+                .to_owned(),
+        )
+        .await?;
             
         // 3. Create the Chats table (replacing Blocks).
         let mut fk_chats_author = {
@@ -51,11 +72,11 @@ impl MigrationTrait for Migration {
                     .if_not_exists()
                     .col(
                         ColumnDef::new(Chats::Id)
-                            .integer()
-                            .not_null()
-                            .auto_increment()
-                            .primary_key(),
-                    )
+                        .uuid()                                         // ← was `.integer()`
+                        .not_null()
+                        .primary_key()
+                        .default(Expr::cust("gen_random_uuid()")),      // ← instead of auto_increment
+                        )
                     .col(
                         ColumnDef::new(Chats::Name)
                             .string()
@@ -101,7 +122,7 @@ impl MigrationTrait for Migration {
                             .auto_increment()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(ChatParticipants::ChatId).integer().not_null())
+                    .col(ColumnDef::new(ChatParticipants::ChatId).uuid().not_null())
                     .col(ColumnDef::new(ChatParticipants::UserId).integer().not_null())
                     .foreign_key(&mut fk_cp_chat)
                     .foreign_key(&mut fk_cp_user)

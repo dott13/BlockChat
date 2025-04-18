@@ -1,5 +1,5 @@
 pub mod user_handler;
-
+pub mod chat_handler;
 #[macro_export]
 macro_rules! merge_update {
     ($active_model:expr, $update:expr, $( $field:ident ),+ $(,)?) => {

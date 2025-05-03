@@ -5,6 +5,7 @@ use actix_cors::Cors;
 use middleware::custom_logger::CustomLogger;
 use log::{info, error};
 use env_logger::Env;
+use seed::seed_users;
 
 mod entities;
 mod routes;
@@ -44,6 +45,14 @@ async fn main() -> std::io::Result<()> {
             "Database seeding failed",
         ));
     }
+    if let Err(e) = seed::seed_users(&db).await {
+        error!("Failed to seed users: {:?}", e);
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "Database seeding failed",
+        ));
+    }
+
     info!("Database seeding completed.");
 
     info!("Starting the HTTP server on 127.0.0.1:8080");

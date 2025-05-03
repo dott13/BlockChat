@@ -1,6 +1,5 @@
 use sea_orm_migration::prelude::*;
 use sea_query::Expr;
-use sea_orm_migration::prelude::extension::postgres::Extension;
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -21,14 +20,14 @@ impl MigrationTrait for Migration {
                     .to_owned(),
             )
             .await?;
-            
+        
         // 2a. Alter Messages: Drop the foreign key on BlockId.
         manager
-        .alter_table(
-            Table::alter()
-                .table(Messages::Table)
-                .drop_foreign_key(Alias::new("messages_block_id_fkey"))
-                .to_owned(),
+        .get_connection()
+        .execute_unprepared(
+            r#"ALTER TABLE messages
+                DROP CONSTRAINT IF EXISTS messages_block_id_fkey,
+                DROP CONSTRAINT IF EXISTS messages_blockid_fkey"#,
         )
         .await?;
 
@@ -181,20 +180,29 @@ impl MigrationTrait for Migration {
             
         // 2a. Alter Messages: Drop the foreign key on ChatId.
         manager
-            .alter_table(
-                Table::alter()
-                    .table(Messages::Table)
-                    .drop_foreign_key(Alias::new("messages_chat_id_fkey"))
-                    .to_owned(),
+            .get_connection()
+            .execute_unprepared(
+                r#"ALTER TABLE "messages" 
+                   DROP CONSTRAINT IF EXISTS "messages_chat_id_fkey""#,
             )
             .await?;
             
-        // 2b. Alter Messages: Rename ChatId back to BlockId.
+        // 2b. For Messages, don't just rename the column - we need to drop and recreate with correct type
         manager
             .alter_table(
                 Table::alter()
                     .table(Messages::Table)
-                    .rename_column(Messages::ChatId, Messages::BlockId)
+                    .drop_column(Messages::ChatId)
+                    .to_owned(),
+            )
+            .await?;
+            
+        // 2c. Add a new integer BlockId column, initially allowing null values
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(Messages::Table)
+                    .add_column(ColumnDef::new(Messages::BlockId).integer().null())
                     .to_owned(),
             )
             .await?;
@@ -258,6 +266,7 @@ impl MigrationTrait for Migration {
 }
 
 #[derive(Iden)]
+#[allow(dead_code)]
 enum Roles {
     Table,
     Id,
@@ -272,6 +281,7 @@ enum Blocks {
 }
 
 #[derive(Iden)]
+#[allow(dead_code)]
 enum Users {
     Table,
     Id,
@@ -304,6 +314,7 @@ enum ChatParticipants {
 }
 
 #[derive(Iden)]
+#[allow(dead_code)]
 enum Messages {
     Table,
     Id,

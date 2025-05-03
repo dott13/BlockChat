@@ -73,10 +73,21 @@ pub async fn create_chat(
     let _ = chat_participants::Entity::insert(chat_participants::ActiveModel {
         chat_id: Set(insert_res.last_insert_id),
         user_id: Set(author.id),
+        status: Set("accepted".to_string()),
         ..Default::default()
     })
     .exec(db.get_ref())
     .await;
+
+    for &invitee_id in &body.invitees {
+        let _ = chat_participants::Entity::insert(chat_participants::ActiveModel {
+            chat_id: Set(insert_res.last_insert_id),
+            user_id: Set(invitee_id),
+            ..Default::default()
+        })
+        .exec(db.get_ref())
+        .await;
+    }
 
     HttpResponse::Ok().json(ChatResponse {
         id: chat.id,

@@ -5,6 +5,7 @@ use uuid::Uuid;
 #[derive(Deserialize)]
 pub struct CreateChatRequest {
     pub name: String,
+    pub invitees: Vec<i32>,
 }
 
 #[derive(Serialize)]

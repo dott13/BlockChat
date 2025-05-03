@@ -7,6 +7,7 @@ pub struct Model {
     pub id: i32,
     pub chat_id: Uuid,
     pub user_id: i32,
+    pub status: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
